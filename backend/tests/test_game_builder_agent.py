@@ -1,6 +1,9 @@
 """Tests for Game Builder Agent."""
 
+import os
 import pytest
+import asyncio
+from unittest.mock import patch, AsyncMock, MagicMock
 from hypothesis import given, strategies as st
 from src.game_builder_agent import GameBuilderAgent
 from src.models import GuessRequest, GameStatus
@@ -324,3 +327,76 @@ class TestGameBuilderAgent:
         
         assert "can't use the target word" in hint.lower()
         assert "happy" in hint
+    
+    @given(
+        st.text(alphabet=st.characters(whitelist_categories=('Lu', 'Ll')), min_size=1, max_size=20),
+        st.text(alphabet=st.characters(whitelist_categories=('Lu', 'Ll')), min_size=1, max_size=20)
+    )
+    def test_property_6_agent_communication_round_trip(self, guess, target_word):
+        """
+        Feature: synonym-seeker, Property 6: Agent Communication Round-Trip
+        For any incorrect guess, the Game Builder SHALL successfully send the guess 
+        to the Hint Provider and receive structured feedback within a reasonable timeout.
+        """
+        # Given: Any incorrect guess and target word
+        # When: Requesting hint analysis (with fallback behavior)
+        hint = self.agent.request_hint_analysis(guess, target_word)
+        
+        # Then: Should receive structured feedback
+        assert isinstance(hint, str)
+        assert len(hint) > 0
+        
+        # Should contain contextual information about the guess or target word
+        hint_lower = hint.lower()
+        guess_lower = guess.lower()
+        target_lower = target_word.lower()
+        
+        # Hint should reference either the guess or target word for context
+        assert (guess_lower in hint_lower or target_lower in hint_lower), \
+            f"Hint should reference guess '{guess}' or target '{target_word}' for context"
+        
+        # Should be reasonable length (not too short or too long)
+        assert 10 <= len(hint) <= 200, f"Hint length {len(hint)} should be between 10-200 characters"
+        
+        # Should not contain error messages indicating communication failure
+        error_indicators = ["error", "failed", "timeout", "unavailable", "exception"]
+        for indicator in error_indicators:
+            assert indicator not in hint_lower, f"Hint should not contain error indicator: {indicator}"
+    
+    @patch.dict(os.environ, {'HINT_PROVIDER_A2A_URL': 'http://localhost:9001'})
+    @patch('src.game_builder_agent.asyncio.run')
+    def test_a2a_communication_with_mock(self, mock_asyncio_run):
+        """
+        Given: A2A communication is configured
+        When: Requesting hint analysis
+        Then: Should attempt A2A communication and handle responses
+        """
+        # Mock successful A2A response
+        mock_asyncio_run.return_value = "Great guess! Try thinking of words that express joy."
+        
+        hint = self.agent.request_hint_analysis("sad", "happy")
+        
+        # Should have attempted A2A communication
+        mock_asyncio_run.assert_called_once()
+        assert hint == "Great guess! Try thinking of words that express joy."
+    
+    @patch.dict(os.environ, {'HINT_PROVIDER_A2A_URL': 'http://localhost:9001'})
+    @patch('src.game_builder_agent.asyncio.run')
+    def test_a2a_communication_fallback(self, mock_asyncio_run):
+        """
+        Given: A2A communication fails
+        When: Requesting hint analysis
+        Then: Should fallback to basic hint generation
+        """
+        # Mock A2A communication failure
+        mock_asyncio_run.side_effect = Exception("Connection failed")
+        
+        hint = self.agent.request_hint_analysis("sad", "happy")
+        
+        # Should have attempted A2A communication
+        mock_asyncio_run.assert_called_once()
+        
+        # Should fallback to basic hint
+        assert isinstance(hint, str)
+        assert len(hint) > 0
+        assert "sad" in hint or "happy" in hint

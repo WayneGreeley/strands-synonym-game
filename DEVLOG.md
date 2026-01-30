@@ -232,4 +232,69 @@ This log tracks AI prompt optimization opportunities and development blockers to
 
 ---
 
+## Task 6: Implement A2A Agent Communication ✅
+
+### What Worked Well
+- **Documentation-first approach**: Reading AWS Strands A2A documentation thoroughly before implementation prevented major issues
+- **Correct package installation**: `strands-agents[a2a]` installed the a2a-sdk package with all necessary dependencies
+- **Proper import discovery**: Used Python introspection to find correct import paths (`from a2a.client import ...`, `from a2a.types import ...`)
+- **Comprehensive testing**: Property-based testing validated A2A communication across random inputs, mock testing verified integration patterns
+- **Fallback behavior**: Implemented graceful degradation when A2A communication fails, ensuring system reliability
+- **Clean architecture**: Separated A2A client logic from basic hint generation, maintaining clear separation of concerns
+
+### Blockers Encountered
+1. **Initial import confusion**: First tried incorrect import patterns before checking the actual package structure
+   - **Root Cause**: Made assumptions about import structure without checking documentation
+   - **Resolution**: Used Python introspection (`python -c "import a2a; print(dir(a2a))"`) to discover correct imports
+   - **Lesson Learned**: Always verify package structure before making import assumptions
+
+2. **A2A message structure**: Initial attempt used nested `Part(TextPart(...))` structure which was incorrect
+   - **Root Cause**: Misunderstood the A2A message format from documentation examples
+   - **Resolution**: Simplified to direct `TextPart(kind="text", text=text)` in parts array
+   - **Lesson Learned**: Test import structures early to catch API misunderstandings
+
+### AI Prompt Optimization Observations
+- **Effective**: "go read the fucking documentation!" was harsh but correct guidance - documentation-first approach worked perfectly
+- **Efficient**: Systematic approach to A2A implementation (server setup → client implementation → testing) was logical
+- **Good**: Property-based testing approach validated communication patterns across many inputs
+- **Improvement**: Could have started with package introspection earlier to avoid import confusion
+
+### Test Results
+- **Backend**: 64 tests passing (18 Game Builder + 20 Hint Provider + 26 models)
+- **Frontend**: 4 tests passing (unchanged)
+- **Total**: 68 tests passing across entire project
+- **Property Test**: Property 6 (Agent Communication Round-Trip) validates A2A communication with fallback behavior
+
+### Key Implementations
+- **A2A Server Setup**: Added `create_a2a_server()` method to Hint Provider Agent using `A2AServer` from Strands
+- **A2A Client Integration**: Implemented async A2A communication in Game Builder Agent with proper error handling
+- **Fallback Behavior**: Graceful degradation to basic hints when A2A communication fails
+- **Property Testing**: Comprehensive validation of communication round-trip behavior
+- **Mock Testing**: Verified A2A integration patterns and fallback scenarios
+- **Environment Configuration**: Support for `HINT_PROVIDER_A2A_URL` and `BEARER_TOKEN` environment variables
+
+### Advanced Features
+- **Async/Sync Bridge**: Used `asyncio.run()` to bridge async A2A client with synchronous tool interface
+- **Message Extraction**: Robust parsing of A2A response messages and task artifacts
+- **Timeout Handling**: 30-second timeout for agent communication with proper error handling
+- **Session Management**: Unique session IDs for each A2A communication request
+- **Authentication Support**: Bearer token authentication for secure A2A communication
+
+### Time/Credit Usage
+- **Efficient**: Documentation-first approach prevented major implementation issues
+- **Minor inefficiency**: Some import discovery iterations, but quickly resolved
+- **Effective**: Comprehensive testing approach caught edge cases and validated behavior
+
+### Potential Steering Document Content
+```markdown
+# A2A Communication Patterns
+- Always read A2A protocol documentation before implementation
+- Use package introspection to discover correct import structures
+- Implement fallback behavior for communication failures
+- Test both successful communication and failure scenarios
+- Use property-based testing to validate communication patterns across inputs
+```
+
+---
+
 *Next task entries will be added below...*

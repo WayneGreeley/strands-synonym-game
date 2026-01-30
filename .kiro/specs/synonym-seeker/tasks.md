@@ -90,18 +90,18 @@ This implementation plan converts the SynonymSeeker design into discrete coding 
     - **Property 8: Misspelling Detection**
     - **Validates: Requirements 3.5**
 
-- [ ] 6. Implement A2A agent communication
-  - [ ] 6.1 Set up A2A server in Hint Provider Agent
+- [x] 6. Implement A2A agent communication
+  - [x] 6.1 Set up A2A server in Hint Provider Agent
     - Configure A2AServer with proper endpoints and message handling
     - Add error handling for communication failures
     - _Requirements: 5.1, 5.2, 5.4_
   
-  - [ ] 6.2 Implement A2A client in Game Builder Agent
+  - [x] 6.2 Implement A2A client in Game Builder Agent
     - Create A2A client for communicating with Hint Provider
     - Add timeout handling and fallback behavior
     - _Requirements: 3.1, 3.6, 5.3_
   
-  - [ ] 6.3 Write property test for agent communication
+  - [x] 6.3 Write property test for agent communication
     - **Property 6: Agent Communication Round-Trip**
     - **Validates: Requirements 3.1, 3.6, 5.1, 5.3**
 

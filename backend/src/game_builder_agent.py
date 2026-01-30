@@ -3,8 +3,12 @@
 import os
 import json
 import uuid
+import asyncio
+import httpx
 from typing import Dict, Any, Optional
 from strands import Agent, tool
+from a2a.client import A2ACardResolver, ClientConfig, ClientFactory
+from a2a.types import Message, Part, Role, TextPart
 from src.models import (
     GameSession, SynonymSlot, GameStatus,
     StartGameResponse, GuessRequest, GuessResponse, GiveUpResponse
@@ -164,7 +168,7 @@ Always respond with valid JSON for API endpoints and maintain game state consist
     
     @tool
     def request_hint_analysis(self, guess: str, target_word: str) -> str:
-        """Send guess to Hint Provider agent for analysis.
+        """Send guess to Hint Provider agent for analysis using A2A protocol.
         
         Args:
             guess: The incorrect guess
@@ -173,9 +177,97 @@ Always respond with valid JSON for API endpoints and maintain game state consist
         Returns:
             str: Hint text from Hint Provider agent
         """
-        # For now, return a basic hint (will implement A2A communication in later tasks)
-        # TODO: Replace with actual A2A communication to Hint Provider agent
+        try:
+            # Try A2A communication first
+            hint_provider_url = os.environ.get('HINT_PROVIDER_A2A_URL')
+            if hint_provider_url:
+                return self._request_hint_via_a2a(guess, target_word, hint_provider_url)
+        except Exception as e:
+            # Log the error but continue with fallback
+            print(f"A2A communication failed: {e}")
         
+        # Fallback to basic hint generation
+        return self._generate_fallback_hint(guess, target_word)
+    
+    def _request_hint_via_a2a(self, guess: str, target_word: str, hint_provider_url: str) -> str:
+        """Request hint via A2A protocol (synchronous wrapper for async call)."""
+        try:
+            # Run the async A2A communication
+            return asyncio.run(self._async_request_hint_via_a2a(guess, target_word, hint_provider_url))
+        except Exception as e:
+            raise Exception(f"A2A communication error: {e}")
+    
+    async def _async_request_hint_via_a2a(self, guess: str, target_word: str, hint_provider_url: str) -> str:
+        """Request hint via A2A protocol (async implementation)."""
+        DEFAULT_TIMEOUT = 30  # 30 second timeout for agent communication
+        
+        # Generate a unique session ID for this communication
+        session_id = str(uuid.uuid4())
+        
+        # Prepare authentication headers if available
+        headers = {}
+        bearer_token = os.environ.get('BEARER_TOKEN')
+        if bearer_token:
+            headers['Authorization'] = f'Bearer {bearer_token}'
+        headers['X-Amzn-Bedrock-AgentCore-Runtime-Session-Id'] = session_id
+        
+        async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT, headers=headers) as httpx_client:
+            # Get agent card from the Hint Provider
+            resolver = A2ACardResolver(httpx_client=httpx_client, base_url=hint_provider_url)
+            agent_card = await resolver.get_agent_card()
+            
+            # Create A2A client
+            config = ClientConfig(
+                httpx_client=httpx_client,
+                streaming=False,  # Use non-streaming mode for sync response
+            )
+            factory = ClientFactory(config)
+            client = factory.create(agent_card)
+            
+            # Create message for hint analysis
+            message_text = f"Analyze guess '{guess}' for target word '{target_word}'. Provide helpful hint."
+            msg = self._create_a2a_message(text=message_text)
+            
+            # Send message and get response
+            async for event in client.send_message(msg):
+                if isinstance(event, Message):
+                    # Extract text from message parts
+                    return self._extract_text_from_message(event)
+                elif isinstance(event, tuple) and len(event) == 2:
+                    # (Task, UpdateEvent) tuple
+                    task, update_event = event
+                    if hasattr(task, 'artifacts') and task.artifacts:
+                        for artifact in task.artifacts:
+                            if hasattr(artifact, 'parts') and artifact.parts:
+                                for part in artifact.parts:
+                                    if hasattr(part, 'text'):
+                                        return part.text
+                    return "Unable to extract hint from agent response"
+                else:
+                    # Fallback for other response types
+                    return str(event)
+        
+        raise Exception("No response received from Hint Provider agent")
+    
+    def _create_a2a_message(self, *, role: Role = Role.user, text: str) -> Message:
+        """Create A2A message for communication."""
+        return Message(
+            kind="message",
+            role=role,
+            parts=[TextPart(kind="text", text=text)],
+            message_id=uuid.uuid4().hex,
+        )
+    
+    def _extract_text_from_message(self, message: Message) -> str:
+        """Extract text content from A2A message."""
+        if hasattr(message, 'parts') and message.parts:
+            for part in message.parts:
+                if hasattr(part, 'text'):
+                    return part.text
+        return "Unable to extract text from message"
+    
+    def _generate_fallback_hint(self, guess: str, target_word: str) -> str:
+        """Generate basic hint when A2A communication fails."""
         if len(guess) < 3:
             return f"'{guess}' is too short. Try thinking of longer words that mean the same as '{target_word}'."
         

@@ -5,6 +5,7 @@ import json
 import re
 from typing import Dict, Any, Optional, List
 from strands import Agent, tool
+from strands.multiagent.a2a import A2AServer
 from src.models import HintRequest, HintResponse
 
 
@@ -290,6 +291,20 @@ Response Format:
             analysis_type=analysis["relationship_type"],
             confidence=analysis["confidence"]
         )
+    
+    def create_a2a_server(self) -> A2AServer:
+        """Create A2A server for agent-to-agent communication."""
+        # Use the complete runtime URL from environment variable, fallback to local
+        runtime_url = os.environ.get('AGENTCORE_RUNTIME_URL', 'http://127.0.0.1:9000/')
+        
+        # Create A2A server with the agent
+        a2a_server = A2AServer(
+            agent=self.agent,
+            http_url=runtime_url,
+            serve_at_root=True  # Serves locally at root (/) regardless of remote URL path complexity
+        )
+        
+        return a2a_server
 
 
 def lambda_handler(event: dict, context: Any) -> dict:
