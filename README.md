@@ -24,7 +24,7 @@ A LinkedIn-style word puzzle game built with AWS Strands multi-agent system for 
 
 - Node.js 22+
 - Python 3.11+
-- AWS CLI configured with profile: wmgreeley
+- AWS CLI configured
 
 ### Frontend Setup
 
