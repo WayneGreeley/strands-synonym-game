@@ -109,4 +109,70 @@ This log tracks AI prompt optimization opportunities and development blockers to
 
 ---
 
+## Task 3: Build Game Builder Agent (Python Lambda) ✅
+
+### What Worked Well
+- **Python 3.13 upgrade successful**: After upgrading from Python 3.9.6 to 3.13.10, the Strands SDK installed and worked correctly
+- **Correct import discovery**: Found the right import pattern `from strands import Agent, tool` through documentation research
+- **Comprehensive testing**: Property-based testing with Hypothesis validated word generation quality across 100 iterations
+- **Strands SDK integration**: The `@tool` decorator worked seamlessly for creating agent tools
+- **Agent architecture**: Clean separation of concerns with tools for word generation, guess validation, and hint analysis
+
+### Blockers Encountered
+1. **Wrong import assumptions**: Initially tried `from strands import Agent, tool` but got import errors
+   - **Root Cause**: Didn't read the documentation first, made assumptions about import structure
+   - **Resolution**: Searched and read official Strands documentation to find correct imports
+   - **Steering Opportunity**: Always read official documentation before making import assumptions
+
+2. **Test validation logic flawed**: Tests were failing because synonym validation wasn't working correctly
+   - **Root Cause**: Session stored synonym slots with `word=None` but validation needed actual synonym words
+   - **Resolution**: Added `_actual_synonyms` attribute to session to store the real synonyms for validation
+   - **Steering Opportunity**: When designing data models, consider both storage and validation needs
+
+3. **GuessResponse missing hint parameter**: Several test failures due to missing required `hint` parameter
+   - **Root Cause**: Didn't check the data model structure carefully when creating responses
+   - **Resolution**: Added `hint=None` to all GuessResponse constructors where hints weren't needed
+   - **Steering Opportunity**: Always validate against data model requirements before implementation
+
+4. **Duplicate guess counting logic**: Test expected guess count to increment even for duplicates
+   - **Root Cause**: Misunderstood business logic - count should track ALL attempts, not just unique ones
+   - **Resolution**: Modified logic to increment count before checking for duplicates
+   - **Steering Opportunity**: Clarify business logic requirements upfront, especially edge cases
+
+### AI Prompt Optimization Observations
+- **Ineffective**: "go read the fucking documentation!" was harsh but correct - I should have read docs first
+- **Effective**: Systematic debugging approach - isolating validation logic, testing components separately
+- **Good**: Breaking down complex issues into smaller testable parts (validation, duplicate logic, response structure)
+- **Missing**: Should have asked about Strands documentation patterns before making assumptions
+
+### Test Results
+- **Backend**: 40 tests passing (14 Game Builder Agent + 26 models)
+- **Frontend**: 4 tests passing (unchanged)
+- **Total**: 44 tests passing across entire project
+- **Property Test**: Property 15 (Word Generation Quality) validates across 100 random inputs
+
+### Key Implementations
+- **Strands Agent**: Complete Game Builder Agent with 3 tools and Lambda handler
+- **Word Generation**: Curated word sets with validation (no external API dependency)
+- **Guess Validation**: Supports exact matches and close misspellings using edit distance
+- **Session Management**: In-memory storage with proper state tracking
+- **Property Testing**: Validates word generation quality with comprehensive assertions
+
+### Time/Credit Usage
+- **Inefficient**: Multiple iterations due to not reading documentation first
+- **Inefficient**: Several test fix cycles due to data model misunderstandings
+- **Efficient**: Once on the right track, systematic debugging was effective
+- **Improvement**: Read official documentation before making any import or API assumptions
+
+### Potential Steering Document Content
+```markdown
+# Documentation-First Development
+- Always read official documentation before making import assumptions
+- Search for quickstart guides and API references when integrating new SDKs
+- Validate data model requirements before implementing response objects
+- Test business logic edge cases (duplicates, error conditions) explicitly
+```
+
+---
+
 *Next task entries will be added below...*

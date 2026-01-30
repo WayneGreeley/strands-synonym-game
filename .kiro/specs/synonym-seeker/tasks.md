@@ -35,39 +35,39 @@ This implementation plan converts the SynonymSeeker design into discrete coding 
     - Test model validation and serialization
     - _Requirements: 1.3, 8.1_
 
-- [ ] 3. Build Game Builder Agent (Python Lambda)
-  - [ ] 3.1 Create basic Strands agent structure
+- [x] 3. Build Game Builder Agent (Python Lambda)
+  - [x] 3.1 Create basic Strands agent structure
     - Set up AWS Strands Agent with system prompt and basic tools
     - Implement Lambda handler function for HTTP requests
     - Add environment variable configuration
     - _Requirements: 1.1, 5.1, 11.2_
   
-  - [ ] 3.2 Implement word generation functionality
+  - [x] 3.2 Implement word generation functionality
     - Create tool for generating target words and synonyms using external API
     - Add input validation and sanitization for API calls
     - Implement fallback behavior for API failures
     - _Requirements: 6.1, 6.2, 6.4, 8.2_
   
-  - [ ] 3.3 Write property test for word generation
+  - [x] 3.3 Write property test for word generation
     - **Property 15: Word Generation Quality**
     - **Validates: Requirements 6.2, 6.5**
   
-  - [ ] 3.4 Implement guess validation logic
+  - [x] 3.4 Implement guess validation logic
     - Create tool for validating synonyms including close matches and misspellings
     - Add duplicate guess detection
     - Implement input sanitization for user guesses
     - _Requirements: 2.1, 2.2, 2.4, 8.1, 8.5_
   
-  - [ ] 3.5 Write property test for guess validation
+  - [x] 3.5 Write property test for guess validation
     - **Property 2: Synonym Validation Consistency**
     - **Validates: Requirements 2.1, 2.2**
   
-  - [ ] 3.6 Add game state management
+  - [x] 3.6 Add game state management
     - Implement session creation, state tracking, and completion detection
     - Add guess counting and game status updates
     - _Requirements: 1.4, 4.1, 4.5_
 
-- [ ] 4. Checkpoint - Test Game Builder Agent
+- [x] 4. Checkpoint - Test Game Builder Agent
   - Ensure all tests pass, ask the user if questions arise.
 
 - [ ] 5. Build Hint Provider Agent (Python Lambda)

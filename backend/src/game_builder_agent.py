@@ -1,0 +1,447 @@
+"""Game Builder Agent for SynonymSeeker."""
+
+import os
+import json
+import uuid
+from typing import Dict, Any, Optional
+from strands import Agent, tool
+from src.models import (
+    GameSession, SynonymSlot, GameStatus,
+    StartGameResponse, GuessRequest, GuessResponse, GiveUpResponse
+)
+
+
+class GameBuilderAgent:
+    """Main agent responsible for game state management and guess validation."""
+    
+    def __init__(self):
+        """Initialize the Game Builder Agent."""
+        self.agent = Agent(
+            tools=[
+                self.generate_word_puzzle,
+                self.validate_guess,
+                self.request_hint_analysis
+            ],
+            system_prompt="""You are the Game Builder Agent for SynonymSeeker, a word puzzle game.
+
+Your responsibilities:
+1. Generate target words with exactly 4 synonyms using external APIs
+2. Validate player guesses for correctness (including close matches and misspellings)
+3. Manage game state and session tracking
+4. Coordinate with the Hint Provider agent for incorrect guesses
+5. Handle game completion and give-up scenarios
+
+Game Rules:
+- Each game has 1 target word and exactly 4 synonyms to find
+- Players can make unlimited guesses
+- Accept correct synonyms and close misspellings
+- Reject duplicate guesses with appropriate feedback
+- Track guess count and game status
+- Provide hints for incorrect guesses via the Hint Provider agent
+
+Always respond with valid JSON for API endpoints and maintain game state consistency."""
+        )
+        
+        # In-memory session storage (for development - would use database in production)
+        self.sessions: Dict[str, GameSession] = {}
+    
+    @tool
+    def generate_word_puzzle(self) -> dict:
+        """Generate a target word with 4 synonyms using external API.
+        
+        Returns:
+            dict: Contains target_word and synonyms list with letter counts
+        """
+        # Use a curated word set for reliable gameplay
+        # This ensures consistent, appropriate difficulty and avoids API failures
+        word_sets = [
+            {
+                "target_word": "happy",
+                "synonyms": ["joyful", "cheerful", "glad", "pleased"]
+            },
+            {
+                "target_word": "fast",
+                "synonyms": ["quick", "rapid", "swift", "speedy"]
+            },
+            {
+                "target_word": "big",
+                "synonyms": ["large", "huge", "enormous", "massive"]
+            },
+            {
+                "target_word": "smart",
+                "synonyms": ["clever", "bright", "wise", "brilliant"]
+            },
+            {
+                "target_word": "cold",
+                "synonyms": ["chilly", "freezing", "icy", "frigid"]
+            },
+            {
+                "target_word": "loud",
+                "synonyms": ["noisy", "booming", "thunderous", "deafening"]
+            },
+            {
+                "target_word": "small",
+                "synonyms": ["tiny", "little", "miniature", "petite"]
+            },
+            {
+                "target_word": "beautiful",
+                "synonyms": ["gorgeous", "stunning", "lovely", "attractive"]
+            }
+        ]
+        
+        # Select a random word set
+        import random
+        word_set = random.choice(word_sets)
+        
+        # Validate word set has exactly 4 synonyms
+        if len(word_set["synonyms"]) != 4:
+            raise ValueError(f"Word set must have exactly 4 synonyms, got {len(word_set['synonyms'])}")
+        
+        # Validate all synonyms are appropriate length (not too short/long)
+        for syn in word_set["synonyms"]:
+            if len(syn) < 3 or len(syn) > 15:
+                raise ValueError(f"Synonym '{syn}' has inappropriate length: {len(syn)}")
+        
+        return {
+            "target_word": word_set["target_word"],
+            "synonyms": [
+                {"word": syn, "letter_count": len(syn)} 
+                for syn in word_set["synonyms"]
+            ]
+        }
+    
+    @tool
+    def validate_guess(self, guess: str, target_word: str, synonyms: list) -> bool:
+        """Validate if guess is a correct synonym (including close matches).
+        
+        Args:
+            guess: Player's guess
+            target_word: The target word for this game
+            synonyms: List of valid synonyms
+            
+        Returns:
+            bool: True if guess is valid, False otherwise
+        """
+        guess_lower = guess.lower().strip()
+        target_lower = target_word.lower().strip()
+        
+        # Reject if guess is the target word itself
+        if guess_lower == target_lower:
+            return False
+        
+        # Check exact matches
+        synonym_words = [syn["word"].lower() if isinstance(syn, dict) else syn.lower() 
+                        for syn in synonyms]
+        
+        if guess_lower in synonym_words:
+            return True
+        
+        # Check for close misspellings (simple Levenshtein distance)
+        for syn_word in synonym_words:
+            if self._is_close_match(guess_lower, syn_word):
+                return True
+        
+        return False
+    
+    def _is_close_match(self, guess: str, target: str) -> bool:
+        """Check if guess is a close misspelling of target using simple edit distance."""
+        if abs(len(guess) - len(target)) > 2:
+            return False
+        
+        # Simple edit distance calculation
+        if len(guess) < len(target):
+            guess, target = target, guess
+        
+        differences = 0
+        for i, char in enumerate(target):
+            if i >= len(guess) or guess[i] != char:
+                differences += 1
+                if differences > 2:
+                    return False
+        
+        differences += len(guess) - len(target)
+        return differences <= 2
+    
+    @tool
+    def request_hint_analysis(self, guess: str, target_word: str) -> str:
+        """Send guess to Hint Provider agent for analysis.
+        
+        Args:
+            guess: The incorrect guess
+            target_word: The target word
+            
+        Returns:
+            str: Hint text from Hint Provider agent
+        """
+        # For now, return a basic hint (will implement A2A communication in later tasks)
+        # TODO: Replace with actual A2A communication to Hint Provider agent
+        
+        if len(guess) < 3:
+            return f"'{guess}' is too short. Try thinking of longer words that mean the same as '{target_word}'."
+        
+        if guess.lower() == target_word.lower():
+            return f"You can't use the target word '{target_word}' as a guess! Try finding words that mean the same thing."
+        
+        # Basic hint based on word relationship
+        return f"'{guess}' is not a synonym of '{target_word}'. Think of words that have a similar meaning to '{target_word}'."
+    
+    def start_new_game(self) -> StartGameResponse:
+        """Start a new game session."""
+        # Generate word puzzle
+        puzzle_data = self.generate_word_puzzle()
+        
+        # Create session
+        session_id = str(uuid.uuid4())
+        synonyms = [
+            SynonymSlot(
+                word=None,
+                letter_count=syn["letter_count"],
+                found=False
+            )
+            for syn in puzzle_data["synonyms"]
+        ]
+        
+        session = GameSession(
+            session_id=session_id,
+            target_word=puzzle_data["target_word"],
+            synonyms=synonyms,
+            guess_count=0,
+            status=GameStatus.ACTIVE,
+            guessed_words=[]
+        )
+        
+        # Store the actual synonym words for validation (not exposed to client)
+        session._actual_synonyms = [syn["word"] for syn in puzzle_data["synonyms"]]
+        
+        # Store session
+        self.sessions[session_id] = session
+        
+        # Return response
+        return StartGameResponse(
+            session_id=session_id,
+            target_word=puzzle_data["target_word"],
+            synonym_slots=[
+                {"letterCount": slot.letter_count} 
+                for slot in synonyms
+            ]
+        )
+    
+    def submit_guess(self, request: GuessRequest) -> GuessResponse:
+        """Process a player's guess."""
+        session = self.sessions.get(request.session_id)
+        if not session:
+            return GuessResponse(
+                success=False,
+                message="Invalid session ID",
+                hint=None,
+                game_state={}
+            )
+        
+        if session.status != GameStatus.ACTIVE:
+            return GuessResponse(
+                success=False,
+                message="Game is not active",
+                hint=None,
+                game_state=self._get_game_state_dict(session)
+            )
+        
+        # Check for duplicate guess
+        if request.guess.lower() in [g.lower() for g in session.guessed_words]:
+            # Still increment guess count for duplicates
+            session.guess_count += 1
+            return GuessResponse(
+                success=False,
+                message=f"You already guessed '{request.guess}'. Try a different word.",
+                hint=None,
+                game_state=self._get_game_state_dict(session)
+            )
+        
+        # Add guess to history
+        session.add_guess(request.guess)
+        
+        # Validate guess using actual synonyms
+        actual_synonyms = getattr(session, '_actual_synonyms', [])
+        synonym_data = [
+            {"word": syn_word, "letter_count": len(syn_word)}
+            for syn_word in actual_synonyms
+        ]
+        
+        is_valid = self.validate_guess(request.guess, session.target_word, synonym_data)
+        
+        if is_valid:
+            # Find matching synonym slot and mark as found
+            actual_synonyms = getattr(session, '_actual_synonyms', [])
+            for i, slot in enumerate(session.synonyms):
+                if (slot.word is None and 
+                    i < len(actual_synonyms) and
+                    (request.guess.lower() == actual_synonyms[i].lower() or
+                     self._is_close_match(request.guess.lower(), actual_synonyms[i].lower()))):
+                    slot.word = request.guess
+                    slot.found = True
+                    break
+            
+            # Check if game is complete
+            if session.is_complete():
+                session.status = GameStatus.COMPLETED
+                message = f"Correct! '{request.guess}' is a synonym. Congratulations! You found all synonyms!"
+            else:
+                message = f"Correct! '{request.guess}' is a synonym of '{session.target_word}'."
+            
+            return GuessResponse(
+                success=True,
+                message=message,
+                hint=None,
+                game_state=self._get_game_state_dict(session)
+            )
+        else:
+            # Get hint for incorrect guess
+            hint = self.request_hint_analysis(request.guess, session.target_word)
+            
+            return GuessResponse(
+                success=False,
+                message=f"'{request.guess}' is not a synonym of '{session.target_word}'.",
+                hint=hint,
+                game_state=self._get_game_state_dict(session)
+            )
+    
+    def give_up(self, session_id: str) -> GiveUpResponse:
+        """Handle give up request."""
+        session = self.sessions.get(session_id)
+        if not session:
+            return GiveUpResponse(
+                message="Invalid session ID",
+                game_state={}
+            )
+        
+        # Reveal all synonyms using stored actual synonyms
+        actual_synonyms = getattr(session, '_actual_synonyms', [])
+        for i, slot in enumerate(session.synonyms):
+            if not slot.found and i < len(actual_synonyms):
+                slot.word = actual_synonyms[i]
+                slot.found = True
+        
+        session.status = GameStatus.GIVEN_UP
+        
+        return GiveUpResponse(
+            message="Game ended. Here are all the synonyms:",
+            game_state=self._get_game_state_dict(session)
+        )
+    
+    def _get_game_state_dict(self, session: GameSession) -> dict:
+        """Convert GameSession to dictionary for API response."""
+        return {
+            "targetWord": session.target_word,
+            "synonyms": [
+                {
+                    "word": slot.word,
+                    "letterCount": slot.letter_count,
+                    "found": slot.found
+                }
+                for slot in session.synonyms
+            ],
+            "guessCount": session.guess_count,
+            "status": session.status.value,
+            "guessedWords": session.guessed_words
+        }
+
+
+def lambda_handler(event: dict, context: Any) -> dict:
+    """AWS Lambda handler for Game Builder Agent."""
+    try:
+        # Initialize agent
+        game_builder = GameBuilderAgent()
+        
+        # Parse request
+        http_method = event.get('httpMethod', 'POST')
+        path = event.get('path', '/')
+        body = event.get('body', '{}')
+        
+        if isinstance(body, str):
+            body = json.loads(body) if body else {}
+        
+        # Route requests
+        if http_method == 'POST' and path == '/start-game':
+            response = game_builder.start_new_game()
+            return {
+                'statusCode': 200,
+                'headers': {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                    'Access-Control-Allow-Headers': 'Content-Type'
+                },
+                'body': json.dumps({
+                    'sessionId': response.session_id,
+                    'targetWord': response.target_word,
+                    'synonymSlots': response.synonym_slots,
+                    'status': response.status
+                })
+            }
+        
+        elif http_method == 'POST' and path == '/submit-guess':
+            request = GuessRequest(**body)
+            response = game_builder.submit_guess(request)
+            return {
+                'statusCode': 200,
+                'headers': {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                    'Access-Control-Allow-Headers': 'Content-Type'
+                },
+                'body': json.dumps({
+                    'success': response.success,
+                    'message': response.message,
+                    'hint': response.hint,
+                    'gameState': response.game_state
+                })
+            }
+        
+        elif http_method == 'POST' and path == '/give-up':
+            session_id = body.get('sessionId')
+            response = game_builder.give_up(session_id)
+            return {
+                'statusCode': 200,
+                'headers': {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                    'Access-Control-Allow-Headers': 'Content-Type'
+                },
+                'body': json.dumps({
+                    'message': response.message,
+                    'gameState': response.game_state
+                })
+            }
+        
+        elif http_method == 'OPTIONS':
+            # Handle CORS preflight
+            return {
+                'statusCode': 200,
+                'headers': {
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                    'Access-Control-Allow-Headers': 'Content-Type'
+                },
+                'body': ''
+            }
+        
+        else:
+            return {
+                'statusCode': 404,
+                'headers': {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*'
+                },
+                'body': json.dumps({'error': 'Not found'})
+            }
+    
+    except Exception as e:
+        return {
+            'statusCode': 500,
+            'headers': {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*'
+            },
+            'body': json.dumps({'error': str(e)})
+        }
