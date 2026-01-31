@@ -364,30 +364,48 @@ Response Format:
         return sanitized
     
     def analyze_hint_request(self, request: HintRequest) -> HintResponse:
-        """Process a hint request and return structured response."""
-        # Analyze the guess relationship
-        analysis = self.analyze_guess_relationship(
-            request.guess, 
-            request.target_word, 
-            request.previous_guesses
-        )
-        
-        # Check for misspellings
-        misspelling_result = self.detect_misspelling(request.guess, request.target_word)
-        
-        # Generate contextual hint
-        if misspelling_result["is_misspelling"]:
-            # Use misspelling analysis for hint generation
-            analysis["relationship_type"] = "misspelling"
-            analysis["intended_word"] = misspelling_result["intended_word"]
-        
-        hint_text = self.generate_contextual_hint(request.guess, request.target_word, analysis)
-        
-        return HintResponse(
-            hint_text=hint_text,
-            analysis_type=analysis["relationship_type"],
-            confidence=analysis["confidence"]
-        )
+        """Process a hint request and return structured response with error handling."""
+        try:
+            # Analyze the guess relationship
+            analysis = self.analyze_guess_relationship(
+                request.guess, 
+                request.target_word, 
+                request.previous_guesses
+            )
+            
+            # Check for misspellings
+            misspelling_result = self.detect_misspelling(request.guess, request.target_word)
+            
+            # Generate contextual hint
+            if misspelling_result["is_misspelling"]:
+                # Use misspelling analysis for hint generation
+                analysis["relationship_type"] = "misspelling"
+                analysis["intended_word"] = misspelling_result["intended_word"]
+            
+            hint_text = self.generate_contextual_hint(request.guess, request.target_word, analysis)
+            
+            return HintResponse(
+                hint_text=hint_text,
+                analysis_type=analysis["relationship_type"],
+                confidence=analysis["confidence"]
+            )
+            
+        except Exception as e:
+            print(f"Error in hint analysis: {e}")
+            # Fallback response when analysis fails
+            guess_clean = self._sanitize_for_display(request.guess)
+            target_clean = self._sanitize_for_display(request.target_word)
+            
+            if not guess_clean or not target_clean:
+                fallback_hint = "Please enter a valid word to get a hint."
+            else:
+                fallback_hint = f"'{guess_clean}' is not a synonym of '{target_clean}'. Try thinking of words with similar meanings."
+            
+            return HintResponse(
+                hint_text=fallback_hint,
+                analysis_type="error_fallback",
+                confidence=0.5
+            )
     
     def create_a2a_server(self) -> A2AServer:
         """Create A2A server for agent-to-agent communication."""

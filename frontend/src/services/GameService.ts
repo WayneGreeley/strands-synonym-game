@@ -52,13 +52,16 @@ export class GameService {
   private config: GameServiceConfig
   private requestTimestamps: number[] = []
   private lastRequestTime: number = 0
+  private currentSessionId: string | null = null
+  private sessionStartTime: number | null = null
+  private readonly SESSION_TIMEOUT_MS = 30 * 60 * 1000 // 30 minutes
 
   constructor(config: Partial<GameServiceConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config }
   }
 
   /**
-   * Start a new game session
+   * Start a new game session with session management
    */
   async startNewGame(): Promise<StartGameResponse> {
     const request: StartGameRequest = {}
@@ -72,6 +75,10 @@ export class GameService {
       // Validate response structure
       this.validateStartGameResponse(response)
       
+      // Track session for timeout management
+      this.currentSessionId = response.sessionId
+      this.sessionStartTime = Date.now()
+      
       return response
     } catch (error) {
       throw this.handleError('Failed to start new game', error)
@@ -79,9 +86,14 @@ export class GameService {
   }
 
   /**
-   * Submit a player's guess
+   * Submit a player's guess with session validation
    */
   async submitGuess(sessionId: string, guess: string): Promise<GuessResponse> {
+    // Check for session timeout
+    if (this.isSessionExpired(sessionId)) {
+      throw new GameServiceError('Session has expired. Please start a new game.')
+    }
+
     // Comprehensive input validation
     this.validateGuessInput(sessionId, guess)
 
@@ -99,8 +111,18 @@ export class GameService {
       // Validate response structure
       this.validateGuessResponse(response)
       
+      // Handle session-related errors
+      if (!response.success && this.isSessionError(response.message)) {
+        this.clearSession()
+        throw new GameServiceError('Session is no longer valid. Please start a new game.')
+      }
+      
       return response
     } catch (error) {
+      // Handle session errors specifically
+      if (error instanceof GameServiceError && error.message.includes('session')) {
+        this.clearSession()
+      }
       throw this.handleError('Failed to submit guess', error)
     }
   }
@@ -171,9 +193,14 @@ export class GameService {
   }
 
   /**
-   * Give up the current game
+   * Give up the current game with session validation
    */
   async giveUp(sessionId: string): Promise<GiveUpResponse> {
+    // Check for session timeout
+    if (this.isSessionExpired(sessionId)) {
+      throw new GameServiceError('Session has expired. Please start a new game.')
+    }
+
     if (!sessionId) {
       throw new GameServiceError('Session ID is required')
     }
@@ -191,10 +218,75 @@ export class GameService {
       // Validate response structure
       this.validateGiveUpResponse(response)
       
+      // Clear session after giving up
+      this.clearSession()
+      
       return response
     } catch (error) {
+      // Handle session errors specifically
+      if (error instanceof GameServiceError && error.message.includes('session')) {
+        this.clearSession()
+      }
       throw this.handleError('Failed to give up game', error)
     }
+  }
+
+  /**
+   * Check if current session has expired
+   */
+  private isSessionExpired(sessionId: string): boolean {
+    if (!this.currentSessionId || !this.sessionStartTime) {
+      return false // No session to expire
+    }
+    
+    if (sessionId !== this.currentSessionId) {
+      return false // Different session, let server handle it
+    }
+    
+    const now = Date.now()
+    return (now - this.sessionStartTime) > this.SESSION_TIMEOUT_MS
+  }
+
+  /**
+   * Check if error message indicates a session problem
+   */
+  private isSessionError(message: string): boolean {
+    const sessionErrorPatterns = [
+      /session.*not.*found/i,
+      /invalid.*session/i,
+      /session.*expired/i,
+      /session.*timeout/i,
+      /session.*invalid/i
+    ]
+    
+    return sessionErrorPatterns.some(pattern => pattern.test(message))
+  }
+
+  /**
+   * Clear current session tracking
+   */
+  private clearSession(): void {
+    this.currentSessionId = null
+    this.sessionStartTime = null
+  }
+
+  /**
+   * Get current session info for debugging
+   */
+  getCurrentSessionInfo(): { sessionId: string | null; startTime: number | null; isExpired: boolean } {
+    return {
+      sessionId: this.currentSessionId,
+      startTime: this.sessionStartTime,
+      isExpired: this.currentSessionId ? this.isSessionExpired(this.currentSessionId) : false
+    }
+  }
+
+  /**
+   * Handle browser refresh/navigation scenarios
+   */
+  handlePageRefresh(): void {
+    // Clear session tracking on page refresh since server sessions are in-memory
+    this.clearSession()
   }
 
   /**

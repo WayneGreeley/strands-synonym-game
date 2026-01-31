@@ -302,7 +302,7 @@ class TestGameBuilderAgent:
         response = self.agent.submit_guess(request)
         
         assert response.success is False
-        assert "Invalid session ID" in response.message
+        assert "Session not found" in response.message
     
     def test_request_hint_analysis(self):
         """
