@@ -118,7 +118,7 @@ describe('GameBoard Component', () => {
       // Then: Should show validation error
       const errorMessage = wrapper.find('.input-error')
       expect(errorMessage.exists()).toBe(true)
-      expect(errorMessage.text()).toBe('Word is too long')
+      expect(errorMessage.text()).toBe('Input too long (maximum 50 characters)')
     })
 
     it('should clear validation error for valid input', async () => {

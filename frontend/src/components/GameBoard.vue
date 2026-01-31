@@ -138,29 +138,58 @@ const lastMessageSuccess = ref(false)
 
 // Methods
 const validateInput = () => {
-  const input = currentGuess.value.trim()
+  const input = currentGuess.value
+  const trimmed = input.trim()
   
   // Clear previous error
   inputError.value = ''
   
   if (!input) return
   
+  // Check for empty input after trimming
+  if (!trimmed) {
+    inputError.value = 'Guess cannot be empty'
+    return
+  }
+  
   // Check for multiple words
-  if (input.includes(' ')) {
+  if (trimmed.includes(' ')) {
     inputError.value = 'Please enter only one word'
     return
   }
   
+  // Check for excessive length
+  if (input.length > 50) {
+    inputError.value = 'Input too long (maximum 50 characters)'
+    return
+  }
+  
   // Check for non-alphabetic characters
-  if (!/^[a-zA-Z]+$/.test(input)) {
+  if (!/^[a-zA-Z\s]*$/.test(input)) {
     inputError.value = 'Please use only letters'
     return
   }
   
-  // Check length
-  if (input.length > 50) {
-    inputError.value = 'Word is too long'
+  // Check minimum length after removing spaces
+  const lettersOnly = input.replace(/[^a-zA-Z]/g, '')
+  if (lettersOnly.length < 1) {
+    inputError.value = 'Word must contain at least one letter'
     return
+  }
+  
+  // Check for suspicious patterns
+  const suspiciousPatterns = [
+    /[<>{}[\]\\]/,  // HTML/XML/JSON brackets
+    /[;|&$`]/,      // Shell command separators
+    /(script|javascript|eval|function)/i,  // Script-related keywords
+    /(select|insert|update|delete|drop)/i,  // SQL keywords
+  ]
+  
+  for (const pattern of suspiciousPatterns) {
+    if (pattern.test(input)) {
+      inputError.value = 'Invalid characters detected in input'
+      return
+    }
   }
 }
 

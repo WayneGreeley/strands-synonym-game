@@ -223,7 +223,7 @@ class TestGuessRequest:
         When: Creating a GuessRequest
         Then: It should raise ValueError
         """
-        with pytest.raises(ValueError, match="Guess cannot be empty after sanitization"):
+        with pytest.raises(ValueError, match="Invalid characters detected in input"):
             GuessRequest(session_id="test", guess="!@#$%")
     
     def test_guess_too_long(self):
@@ -233,7 +233,7 @@ class TestGuessRequest:
         Then: It should raise ValueError
         """
         long_guess = "a" * 51
-        with pytest.raises(ValueError, match="Guess too long"):
+        with pytest.raises(ValueError, match="Input too long \\(maximum 50 characters\\)"):
             GuessRequest(session_id="test", guess=long_guess)
 
 

@@ -95,23 +95,69 @@ class GuessRequest:
         if not self.session_id:
             raise ValueError("Session ID cannot be empty")
         
+        # Store original guess for error messages
+        original_guess = self.guess
+        
         # Sanitize guess input
         self.guess = self._sanitize_guess(self.guess)
         
-        if not self.guess:
-            raise ValueError("Guess cannot be empty after sanitization")
-        if len(self.guess) > 50:
-            raise ValueError("Guess too long")
-        if not re.match(r'^[a-zA-Z]+$', self.guess):
-            raise ValueError("Guess must contain only letters")
+        # Comprehensive input validation
+        self._validate_input(original_guess, self.guess)
     
     def _sanitize_guess(self, guess: str) -> str:
         """Sanitize user input by removing non-alphabetic characters."""
         if not guess:
             return ""
-        # Remove non-alphabetic characters and convert to lowercase
-        sanitized = re.sub(r'[^a-zA-Z]', '', guess.strip())
-        return sanitized.lower()
+        
+        # Strip whitespace and convert to lowercase
+        sanitized = guess.strip().lower()
+        
+        # Keep only Unicode letters (not just ASCII)
+        sanitized = ''.join(c for c in sanitized if c.isalpha())
+        
+        return sanitized
+    
+    def _validate_input(self, original: str, sanitized: str) -> None:
+        """Comprehensive input validation with specific error messages."""
+        # Check for empty input first
+        if not original or not original.strip():
+            raise ValueError("Guess cannot be empty")
+        
+        # Check for multiple words (spaces in original input) - high priority
+        if ' ' in original.strip():
+            raise ValueError("Please enter only one word")
+        
+        # Check for excessive length (before sanitization to catch attempts to bypass)
+        if len(original) > 50:
+            raise ValueError("Input too long (maximum 50 characters)")
+        
+        # Check for suspicious patterns that might indicate injection attempts - before other checks
+        suspicious_patterns = [
+            r'[<>{}[\]\\]',  # HTML/XML/JSON brackets
+            r'[;|&$`]',      # Shell command separators
+            r'(script|javascript|eval|function)',  # Script-related keywords
+            r'(select|insert|update|delete|drop)',  # SQL keywords
+        ]
+        
+        for pattern in suspicious_patterns:
+            if re.search(pattern, original, re.IGNORECASE):
+                raise ValueError("Invalid characters detected in input")
+        
+        # Check if input became empty after sanitization
+        if not sanitized:
+            raise ValueError("Guess must contain at least one letter")
+        
+        # Check sanitized length
+        if len(sanitized) > 50:
+            raise ValueError("Word too long (maximum 50 letters)")
+        
+        # Check minimum length
+        if len(sanitized) < 1:
+            raise ValueError("Word too short (minimum 1 letter)")
+        
+        # Ensure only alphabetic characters remain (allow Unicode letters)
+        if not sanitized.isalpha():
+            raise ValueError("Word must contain only letters")
 
 
 @dataclass

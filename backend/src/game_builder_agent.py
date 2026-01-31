@@ -328,7 +328,7 @@ Always respond with valid JSON for API endpoints and maintain game state consist
                 hint=None,
                 game_state={}
             )
-        
+
         if session.status != GameStatus.ACTIVE:
             return GuessResponse(
                 success=False,
@@ -336,7 +336,18 @@ Always respond with valid JSON for API endpoints and maintain game state consist
                 hint=None,
                 game_state=self._get_game_state_dict(session)
             )
-        
+
+        # Check if guess is the target word itself
+        if request.guess.lower() == session.target_word.lower():
+            session.guess_count += 1
+            session.guessed_words.append(request.guess)
+            return GuessResponse(
+                success=False,
+                message=f"You can't use the target word '{session.target_word}' as a guess! Try finding words that mean the same thing.",
+                hint=None,
+                game_state=self._get_game_state_dict(session)
+            )
+
         # Check for duplicate guess
         if request.guess.lower() in [g.lower() for g in session.guessed_words]:
             # Still increment guess count for duplicates
@@ -347,19 +358,19 @@ Always respond with valid JSON for API endpoints and maintain game state consist
                 hint=None,
                 game_state=self._get_game_state_dict(session)
             )
-        
+
         # Add guess to history
         session.add_guess(request.guess)
-        
+
         # Validate guess using actual synonyms
         actual_synonyms = getattr(session, '_actual_synonyms', [])
         synonym_data = [
             {"word": syn_word, "letter_count": len(syn_word)}
             for syn_word in actual_synonyms
         ]
-        
+
         is_valid = self.validate_guess(request.guess, session.target_word, synonym_data)
-        
+
         if is_valid:
             # Find matching synonym slot and mark as found
             actual_synonyms = getattr(session, '_actual_synonyms', [])
@@ -371,14 +382,14 @@ Always respond with valid JSON for API endpoints and maintain game state consist
                     slot.word = request.guess
                     slot.found = True
                     break
-            
+
             # Check if game is complete
             if session.is_complete():
                 session.status = GameStatus.COMPLETED
                 message = f"Correct! '{request.guess}' is a synonym. Congratulations! You found all synonyms!"
             else:
                 message = f"Correct! '{request.guess}' is a synonym of '{session.target_word}'."
-            
+
             return GuessResponse(
                 success=True,
                 message=message,
@@ -388,7 +399,7 @@ Always respond with valid JSON for API endpoints and maintain game state consist
         else:
             # Get hint for incorrect guess
             hint = self.request_hint_analysis(request.guess, session.target_word)
-            
+
             return GuessResponse(
                 success=False,
                 message=f"'{request.guess}' is not a synonym of '{session.target_word}'.",
@@ -448,8 +459,30 @@ def lambda_handler(event: dict, context: Any) -> dict:
         path = event.get('path', '/')
         body = event.get('body', '{}')
         
+        # Request size validation (Lambda has 6MB limit, we'll use 1MB for safety)
+        MAX_REQUEST_SIZE = 1024 * 1024  # 1MB
+        if isinstance(body, str) and len(body.encode('utf-8')) > MAX_REQUEST_SIZE:
+            return {
+                'statusCode': 413,
+                'headers': {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*'
+                },
+                'body': json.dumps({'error': 'Request too large'})
+            }
+        
         if isinstance(body, str):
-            body = json.loads(body) if body else {}
+            try:
+                body = json.loads(body) if body else {}
+            except json.JSONDecodeError:
+                return {
+                    'statusCode': 400,
+                    'headers': {
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*'
+                    },
+                    'body': json.dumps({'error': 'Invalid JSON in request body'})
+                }
         
         # Route requests
         if http_method == 'POST' and path == '/start-game':
@@ -471,26 +504,47 @@ def lambda_handler(event: dict, context: Any) -> dict:
             }
         
         elif http_method == 'POST' and path == '/submit-guess':
-            request = GuessRequest(**body)
-            response = game_builder.submit_guess(request)
-            return {
-                'statusCode': 200,
-                'headers': {
-                    'Content-Type': 'application/json',
-                    'Access-Control-Allow-Origin': '*',
-                    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-                    'Access-Control-Allow-Headers': 'Content-Type'
-                },
-                'body': json.dumps({
-                    'success': response.success,
-                    'message': response.message,
-                    'hint': response.hint,
-                    'gameState': response.game_state
-                })
-            }
+            try:
+                request = GuessRequest(**body)
+                response = game_builder.submit_guess(request)
+                return {
+                    'statusCode': 200,
+                    'headers': {
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*',
+                        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                        'Access-Control-Allow-Headers': 'Content-Type'
+                    },
+                    'body': json.dumps({
+                        'success': response.success,
+                        'message': response.message,
+                        'hint': response.hint,
+                        'gameState': response.game_state
+                    })
+                }
+            except ValueError as e:
+                # Handle validation errors from GuessRequest
+                return {
+                    'statusCode': 400,
+                    'headers': {
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*'
+                    },
+                    'body': json.dumps({'error': str(e)})
+                }
         
         elif http_method == 'POST' and path == '/give-up':
             session_id = body.get('sessionId')
+            if not session_id:
+                return {
+                    'statusCode': 400,
+                    'headers': {
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*'
+                    },
+                    'body': json.dumps({'error': 'Session ID is required'})
+                }
+            
             response = game_builder.give_up(session_id)
             return {
                 'statusCode': 200,
@@ -529,11 +583,13 @@ def lambda_handler(event: dict, context: Any) -> dict:
             }
     
     except Exception as e:
+        # Log error for debugging but don't expose internal details
+        print(f"Internal error: {e}")
         return {
             'statusCode': 500,
             'headers': {
                 'Content-Type': 'application/json',
                 'Access-Control-Allow-Origin': '*'
             },
-            'body': json.dumps({'error': str(e)})
+            'body': json.dumps({'error': 'Internal server error'})
         }

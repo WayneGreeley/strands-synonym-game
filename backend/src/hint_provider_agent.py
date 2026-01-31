@@ -55,6 +55,17 @@ Response Format:
         Returns:
             dict: Analysis containing relationship type, confidence, and reasoning
         """
+        # Sanitize inputs to prevent prompt injection
+        guess = self._sanitize_for_analysis(guess)
+        target_word = self._sanitize_for_analysis(target_word)
+        
+        if not guess or not target_word:
+            return {
+                "relationship_type": "invalid_input",
+                "confidence": 1.0,
+                "reasoning": "Invalid input provided"
+            }
+        
         guess_lower = guess.lower().strip()
         target_lower = target_word.lower().strip()
         
@@ -111,6 +122,18 @@ Response Format:
         Returns:
             dict: Misspelling detection results with intended word if found
         """
+        # Sanitize inputs
+        guess = self._sanitize_for_analysis(guess)
+        target_word = self._sanitize_for_analysis(target_word)
+        
+        if not guess or not target_word:
+            return {
+                "is_misspelling": False,
+                "intended_word": None,
+                "edit_distance": None,
+                "confidence": 0.0
+            }
+        
         guess_lower = guess.lower().strip()
         common_synonyms = self._get_common_synonyms(target_word)
         
@@ -153,24 +176,44 @@ Response Format:
         Returns:
             str: Contextual hint text
         """
+        # Sanitize inputs for safe hint generation
+        guess_display = self._sanitize_for_display(guess)
+        target_display = self._sanitize_for_display(target_word)
+        
+        # Use original guess if sanitized version is empty but original had content
+        if not guess_display and guess and guess.strip():
+            guess_display = guess.strip()[:20]  # Truncate for safety
+        
+        if not target_display and target_word and target_word.strip():
+            target_display = target_word.strip()[:20]  # Truncate for safety
+        
+        if not guess_display or not target_display:
+            return "Please enter a valid word to get a hint."
+        
         relationship_type = analysis.get("relationship_type", "unrelated")
         
         if relationship_type == "target_word":
-            return f"You can't use the target word '{target_word}' as a guess! Try finding words that mean the same thing."
+            return f"You can't use the target word '{target_display}' as a guess! Try finding words that mean the same thing."
+        
+        elif relationship_type == "invalid_input":
+            return "Please enter a valid word to get a hint."
         
         elif relationship_type == "misspelling":
-            intended_word = analysis.get("intended_word", "")
-            return f"Close! Did you mean '{intended_word}'? That would be a great synonym for '{target_word}'."
+            intended_word = self._sanitize_for_display(analysis.get("intended_word", ""))
+            if intended_word:
+                return f"Close! Did you mean '{intended_word}'? That would be a great synonym for '{target_display}'."
+            else:
+                return f"That looks like it might be a misspelling. Try checking your spelling and think of words that mean the same as '{target_display}'."
         
         elif relationship_type == "related":
-            return f"'{guess}' is related to '{target_word}' but not quite a synonym. Think of words that mean exactly the same thing."
+            return f"'{guess_display}' is related to '{target_display}' but not quite a synonym. Think of words that mean exactly the same thing."
         
         elif relationship_type == "wrong_form":
-            return f"'{guess}' is in the right area but try a different form of the word. What's another way to say '{target_word}'?"
+            return f"'{guess_display}' is in the right area but try a different form of the word. What's another way to say '{target_display}'?"
         
         else:  # unrelated
-            hints = self._get_vocabulary_hints(target_word)
-            return f"'{guess}' isn't related to '{target_word}'. {hints}"
+            hints = self._get_vocabulary_hints(target_display)
+            return f"'{guess_display}' isn't related to '{target_display}'. {hints}"
     
     def _get_common_synonyms(self, target_word: str) -> List[str]:
         """Get common synonyms for the target word."""
@@ -266,6 +309,60 @@ Response Format:
         
         return hints.get(target_word.lower(), f"Think of words that have a similar meaning to '{target_word}'.")
     
+    def _sanitize_for_analysis(self, text: str) -> str:
+        """Sanitize input for analysis to prevent prompt injection."""
+        if not text or not isinstance(text, str):
+            return ""
+        
+        # Remove potential prompt injection patterns
+        text = text.strip()
+        
+        # Limit length to prevent abuse
+        if len(text) > 50:
+            text = text[:50]
+        
+        # Check for suspicious patterns that might indicate injection attempts
+        suspicious_patterns = [
+            r'(ignore|forget|disregard).*(previous|above|instruction)',
+            r'(system|assistant|ai).*(prompt|instruction|role)',
+            r'(tell|show|reveal).*(secret|password|key)',
+            r'(execute|run|eval).*(code|script|command)',
+            r'(sql|database|table).*(select|insert|update|delete)',
+            r'\b(script|javascript|eval)\b',  # Individual injection keywords
+        ]
+        
+        for pattern in suspicious_patterns:
+            if re.search(pattern, text, re.IGNORECASE):
+                return ""  # Return empty string for suspicious input
+        
+        # Remove non-alphabetic characters except spaces and hyphens
+        sanitized = re.sub(r'[^a-zA-Z\s\-]', '', text)
+        
+        # Remove excessive whitespace
+        sanitized = re.sub(r'\s+', ' ', sanitized).strip()
+        
+        return sanitized
+    
+    def _sanitize_for_display(self, text: str) -> str:
+        """Sanitize text for safe display in hints."""
+        if not text or not isinstance(text, str):
+            return ""
+        
+        # Basic sanitization for display
+        text = text.strip()
+        
+        # Limit length
+        if len(text) > 50:
+            text = text[:50]
+        
+        # Keep only safe characters for display
+        sanitized = re.sub(r'[^a-zA-Z\s\-]', '', text)
+        
+        # Remove excessive whitespace
+        sanitized = re.sub(r'\s+', ' ', sanitized).strip()
+        
+        return sanitized
+    
     def analyze_hint_request(self, request: HintRequest) -> HintResponse:
         """Process a hint request and return structured response."""
         # Analyze the guess relationship
@@ -318,34 +415,81 @@ def lambda_handler(event: dict, context: Any) -> dict:
         path = event.get('path', '/')
         body = event.get('body', '{}')
         
+        # Request size validation (Lambda has 6MB limit, we'll use 1MB for safety)
+        MAX_REQUEST_SIZE = 1024 * 1024  # 1MB
+        if isinstance(body, str) and len(body.encode('utf-8')) > MAX_REQUEST_SIZE:
+            return {
+                'statusCode': 413,
+                'headers': {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*'
+                },
+                'body': json.dumps({'error': 'Request too large'})
+            }
+        
         if isinstance(body, str):
-            body = json.loads(body) if body else {}
+            try:
+                body = json.loads(body) if body else {}
+            except json.JSONDecodeError:
+                return {
+                    'statusCode': 400,
+                    'headers': {
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*'
+                    },
+                    'body': json.dumps({'error': 'Invalid JSON in request body'})
+                }
         
         # Route requests
         if http_method == 'POST' and path == '/analyze-hint':
-            # Create hint request from body
-            request = HintRequest(
-                guess=body.get('guess', ''),
-                target_word=body.get('target_word', ''),
-                previous_guesses=body.get('previous_guesses', [])
-            )
-            
-            response = hint_provider.analyze_hint_request(request)
-            
-            return {
-                'statusCode': 200,
-                'headers': {
-                    'Content-Type': 'application/json',
-                    'Access-Control-Allow-Origin': '*',
-                    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-                    'Access-Control-Allow-Headers': 'Content-Type'
-                },
-                'body': json.dumps({
-                    'hintText': response.hint_text,
-                    'analysisType': response.analysis_type,
-                    'confidence': response.confidence
-                })
-            }
+            try:
+                # Validate required fields
+                guess = body.get('guess', '')
+                target_word = body.get('target_word', '')
+                
+                if not guess or not target_word:
+                    return {
+                        'statusCode': 400,
+                        'headers': {
+                            'Content-Type': 'application/json',
+                            'Access-Control-Allow-Origin': '*'
+                        },
+                        'body': json.dumps({'error': 'Both guess and target_word are required'})
+                    }
+                
+                # Create hint request from body
+                request = HintRequest(
+                    guess=guess,
+                    target_word=target_word,
+                    previous_guesses=body.get('previous_guesses', [])
+                )
+                
+                response = hint_provider.analyze_hint_request(request)
+                
+                return {
+                    'statusCode': 200,
+                    'headers': {
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*',
+                        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                        'Access-Control-Allow-Headers': 'Content-Type'
+                    },
+                    'body': json.dumps({
+                        'hintText': response.hint_text,
+                        'analysisType': response.analysis_type,
+                        'confidence': response.confidence
+                    })
+                }
+            except ValueError as e:
+                # Handle validation errors from HintRequest
+                return {
+                    'statusCode': 400,
+                    'headers': {
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*'
+                    },
+                    'body': json.dumps({'error': str(e)})
+                }
         
         elif http_method == 'OPTIONS':
             # Handle CORS preflight
@@ -370,11 +514,13 @@ def lambda_handler(event: dict, context: Any) -> dict:
             }
     
     except Exception as e:
+        # Log error for debugging but don't expose internal details
+        print(f"Internal error in hint provider: {e}")
         return {
             'statusCode': 500,
             'headers': {
                 'Content-Type': 'application/json',
                 'Access-Control-Allow-Origin': '*'
             },
-            'body': json.dumps({'error': str(e)})
+            'body': json.dumps({'error': 'Internal server error'})
         }

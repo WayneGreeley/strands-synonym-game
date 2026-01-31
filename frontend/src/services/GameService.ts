@@ -15,6 +15,8 @@ interface GameServiceConfig {
   timeout: number
   retryAttempts: number
   retryDelay: number
+  rateLimitDelay: number
+  maxRequestsPerMinute: number
 }
 
 /**
@@ -24,7 +26,9 @@ const DEFAULT_CONFIG: GameServiceConfig = {
   baseUrl: import.meta.env.VITE_GAME_BUILDER_URL || 'http://localhost:3000',
   timeout: 10000, // 10 seconds
   retryAttempts: 3,
-  retryDelay: 1000 // 1 second
+  retryDelay: 1000, // 1 second
+  rateLimitDelay: 1000, // 1 second delay between requests
+  maxRequestsPerMinute: 60 // Maximum 60 requests per minute
 }
 
 /**
@@ -46,6 +50,8 @@ export class GameServiceError extends Error {
  */
 export class GameService {
   private config: GameServiceConfig
+  private requestTimestamps: number[] = []
+  private lastRequestTime: number = 0
 
   constructor(config: Partial<GameServiceConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config }
@@ -76,13 +82,8 @@ export class GameService {
    * Submit a player's guess
    */
   async submitGuess(sessionId: string, guess: string): Promise<GuessResponse> {
-    // Validate input
-    if (!sessionId) {
-      throw new GameServiceError('Session ID is required')
-    }
-    if (!guess || !guess.trim()) {
-      throw new GameServiceError('Guess cannot be empty')
-    }
+    // Comprehensive input validation
+    this.validateGuessInput(sessionId, guess)
 
     const request: GuessRequest = {
       sessionId,
@@ -101,6 +102,71 @@ export class GameService {
       return response
     } catch (error) {
       throw this.handleError('Failed to submit guess', error)
+    }
+  }
+
+  /**
+   * Validate guess input before sending to backend
+   */
+  private validateGuessInput(sessionId: string, guess: string): void {
+    // Session ID validation
+    if (!sessionId || typeof sessionId !== 'string') {
+      throw new GameServiceError('Session ID is required')
+    }
+    
+    if (sessionId.trim().length === 0) {
+      throw new GameServiceError('Session ID cannot be empty')
+    }
+
+    // Guess validation
+    if (guess === null || guess === undefined) {
+      throw new GameServiceError('Guess is required')
+    }
+    
+    if (typeof guess !== 'string') {
+      throw new GameServiceError('Guess must be a string')
+    }
+    
+    const trimmed = guess.trim()
+    
+    // Empty input check
+    if (!trimmed) {
+      throw new GameServiceError('Guess cannot be empty')
+    }
+    
+    // Multiple words check
+    if (trimmed.includes(' ')) {
+      throw new GameServiceError('Please enter only one word')
+    }
+    
+    // Length validation
+    if (guess.length > 50) {
+      throw new GameServiceError('Input too long (maximum 50 characters)')
+    }
+    
+    // Character validation - allow only letters
+    if (!/^[a-zA-Z\s]*$/.test(guess)) {
+      throw new GameServiceError('Please use only letters')
+    }
+    
+    // Minimum length after sanitization
+    const lettersOnly = guess.replace(/[^a-zA-Z]/g, '')
+    if (lettersOnly.length < 1) {
+      throw new GameServiceError('Word must contain at least one letter')
+    }
+    
+    // Check for suspicious patterns
+    const suspiciousPatterns = [
+      /[<>{}[\]\\]/,  // HTML/XML/JSON brackets
+      /[;|&$`]/,      // Shell command separators
+      /(script|javascript|eval|function)/i,  // Script-related keywords
+      /(select|insert|update|delete|drop)/i,  // SQL keywords
+    ]
+    
+    for (const pattern of suspiciousPatterns) {
+      if (pattern.test(guess)) {
+        throw new GameServiceError('Invalid characters detected in input')
+      }
     }
   }
 
@@ -139,6 +205,9 @@ export class GameService {
     options: RequestInit,
     attempt: number = 1
   ): Promise<T> {
+    // Apply rate limiting
+    await this.applyRateLimit()
+    
     const url = `${this.config.baseUrl}${endpoint}`
     
     // Set default headers
@@ -203,6 +272,37 @@ export class GameService {
 
       throw new GameServiceError('Network error', undefined, error as Error)
     }
+  }
+
+  /**
+   * Apply rate limiting to prevent abuse
+   */
+  private async applyRateLimit(): Promise<void> {
+    const now = Date.now()
+    
+    // Clean old timestamps (older than 1 minute)
+    this.requestTimestamps = this.requestTimestamps.filter(
+      timestamp => now - timestamp < 60000
+    )
+    
+    // Check if we've exceeded the rate limit
+    if (this.requestTimestamps.length >= this.config.maxRequestsPerMinute) {
+      const oldestRequest = this.requestTimestamps[0]
+      const waitTime = 60000 - (now - oldestRequest)
+      if (waitTime > 0) {
+        await this.delay(waitTime)
+      }
+    }
+    
+    // Ensure minimum delay between requests
+    const timeSinceLastRequest = now - this.lastRequestTime
+    if (timeSinceLastRequest < this.config.rateLimitDelay) {
+      await this.delay(this.config.rateLimitDelay - timeSinceLastRequest)
+    }
+    
+    // Record this request
+    this.requestTimestamps.push(Date.now())
+    this.lastRequestTime = Date.now()
   }
 
   /**
