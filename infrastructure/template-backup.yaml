@@ -1,0 +1,165 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: 'SynonymSeeker - Multi-agent word puzzle game with AWS Strands'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+    Description: Environment name
+  
+  ThesaurusApiKey:
+    Type: String
+    Default: ''
+    NoEcho: true
+    Description: External thesaurus API key (optional)
+  
+  OpenAIApiKey:
+    Type: String
+    Default: ''
+    NoEcho: true
+    Description: OpenAI API key (optional)
+
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 512
+    Runtime: python3.12
+    Environment:
+      Variables:
+        ENVIRONMENT: !Ref Environment
+        LOG_LEVEL: INFO
+        AWS_REGION: !Ref AWS::Region
+    Layers:
+      - !Ref StrandsLayer
+
+Resources:
+  # Shared Lambda Layer for Strands dependencies
+  StrandsLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: !Sub '${AWS::StackName}-strands-layer'
+      Description: 'Strands agents and dependencies'
+      ContentUri: ../backend/
+      CompatibleRuntimes:
+        - python3.12
+      RetentionPolicy: Delete
+    Metadata:
+      BuildMethod: python3.12
+
+  # Game Builder Agent Lambda Function
+  GameBuilderFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-game-builder'
+      Description: 'Game Builder Agent for SynonymSeeker'
+      CodeUri: ../backend/src/
+      Handler: game_builder_agent.lambda_handler
+      Environment:
+        Variables:
+          THESAURUS_API_KEY: !Ref ThesaurusApiKey
+          OPENAI_API_KEY: !Ref OpenAIApiKey
+      FunctionUrlConfig:
+        AuthType: NONE
+        Cors:
+          AllowCredentials: false
+          AllowHeaders:
+            - Content-Type
+            - X-Amzn-Trace-Id
+          AllowMethods:
+            - GET
+            - POST
+            - OPTIONS
+          AllowOrigins:
+            - '*'
+          ExposeHeaders:
+            - Date
+          MaxAge: 86400
+      Policies:
+        - CloudWatchLogsFullAccess
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - logs:CreateLogGroup
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+              Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-game-builder*'
+
+  # Hint Provider Agent Lambda Function  
+  HintProviderFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-hint-provider'
+      Description: 'Hint Provider Agent for SynonymSeeker'
+      CodeUri: ../backend/src/
+      Handler: hint_provider_agent.lambda_handler
+      Environment:
+        Variables:
+          PLACEHOLDER: "placeholder"
+      FunctionUrlConfig:
+        AuthType: NONE
+        Cors:
+          AllowCredentials: false
+          AllowHeaders:
+            - Content-Type
+            - X-Amzn-Trace-Id
+            - X-Amzn-Bedrock-AgentCore-Runtime-Session-Id
+          AllowMethods:
+            - GET
+            - POST
+            - OPTIONS
+          AllowOrigins:
+            - '*'
+          ExposeHeaders:
+            - Date
+          MaxAge: 86400
+      Policies:
+        - CloudWatchLogsFullAccess
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - logs:CreateLogGroup
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+              Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-hint-provider*'
+
+  # CloudWatch Log Groups
+  GameBuilderLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${AWS::StackName}-game-builder'
+      RetentionInDays: 14
+
+  HintProviderLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${AWS::StackName}-hint-provider'
+      RetentionInDays: 14
+
+Outputs:
+  GameBuilderFunctionUrl:
+    Description: 'Game Builder Function URL'
+    Value: !GetAtt GameBuilderFunctionUrl.FunctionUrl
+    Export:
+      Name: !Sub '${AWS::StackName}-GameBuilderUrl'
+
+  HintProviderFunctionUrl:
+    Description: 'Hint Provider Function URL'
+    Value: !GetAtt HintProviderFunctionUrl.FunctionUrl
+    Export:
+      Name: !Sub '${AWS::StackName}-HintProviderUrl'
+
+  GameBuilderFunctionArn:
+    Description: 'Game Builder Function ARN'
+    Value: !GetAtt GameBuilderFunction.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-GameBuilderArn'
+
+  HintProviderFunctionArn:
+    Description: 'Hint Provider Function ARN'
+    Value: !GetAtt HintProviderFunction.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-HintProviderArn'

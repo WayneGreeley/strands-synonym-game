@@ -213,7 +213,12 @@ Response Format:
         
         else:  # unrelated
             hints = self._get_vocabulary_hints(target_display)
-            return f"'{guess_display}' isn't related to '{target_display}'. {hints}"
+            # Avoid echoing negative words in hints
+            negative_words = ["wrong", "bad", "stupid", "dumb", "terrible"]
+            if any(word in guess_display.lower() for word in negative_words):
+                return f"That word isn't related to '{target_display}'. {hints}"
+            else:
+                return f"'{guess_display}' isn't related to '{target_display}'. {hints}"
     
     def _get_common_synonyms(self, target_word: str) -> List[str]:
         """Get common synonyms for the target word."""

@@ -167,39 +167,39 @@ This implementation plan converts the SynonymSeeker design into discrete coding 
     - **Property 16: Service Failure Resilience**
     - **Validates: Requirements 6.4, 9.4**
 
-- [ ] 10. Create AWS infrastructure with SAM
-  - [ ] 10.1 Create SAM template for Lambda functions
+- [x] 10. Create AWS infrastructure with SAM
+  - [x] 10.1 Create SAM template for Lambda functions
     - Define Game Builder and Hint Provider Lambda functions
     - Configure Function URLs, environment variables, and IAM roles
     - Add CloudWatch Logs configuration
     - _Requirements: 11.2, 11.6_
   
-  - [ ] 10.2 Create S3 and CloudFront infrastructure
+  - [x] 10.2 Create S3 and CloudFront infrastructure
     - Set up S3 bucket for static website hosting
     - Configure CloudFront distribution with OAC
     - Add proper CORS and security headers
     - _Requirements: 11.1, 11.3_
   
-  - [ ] 10.3 Add secrets management
+  - [x] 10.3 Add secrets management
     - Create separate template for API keys and secrets
     - Configure environment variables for Lambda functions
     - Document required AWS CLI commands for secret setup
     - _Requirements: 8.3, 11.5_
 
-- [ ] 11. Final integration and testing
-  - [ ] 11.1 Deploy and test complete system
+- [x] 11. Final integration and testing
+  - [-] 11.1 Deploy and test complete system
     - Deploy Lambda functions and test A2A communication
     - Deploy frontend to S3/CloudFront and test end-to-end flows
     - Verify all security measures and error handling
     - _Requirements: 11.4, 11.5_
   
-  - [ ] 11.2 Write integration tests
+  - [x] 11.2 Write integration tests
     - Test complete game flows from start to finish
     - Test concurrent session handling
     - Test external service integration
     - _Requirements: 9.6, 6.1_
   
-  - [ ] 11.3 Create documentation and README
+  - [x] 11.3 Create documentation and README
     - Document multi-agent architecture and A2A patterns
     - Add deployment instructions and AWS CLI commands
     - Include educational notes about Strands concepts

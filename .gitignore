@@ -43,6 +43,9 @@ Thumbs.db
 .aws-sam/
 samconfig.toml
 
+# MCP Configuration (contains user-specific settings)
+.kiro/settings/mcp.json
+
 # Testing
 coverage/
 .coverage

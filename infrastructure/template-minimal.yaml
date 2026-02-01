@@ -1,0 +1,20 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: 'SynonymSeeker - Minimal Lambda test'
+
+Resources:
+  TestFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: 'synonymseeker-test'
+      Description: 'Test Lambda Function'
+      CodeUri: ../backend/src/
+      Handler: test_handler.lambda_handler
+      Runtime: python3.12
+      Timeout: 30
+      MemorySize: 128
+
+Outputs:
+  TestFunctionArn:
+    Description: 'Test Function ARN'
+    Value: !GetAtt TestFunction.Arn

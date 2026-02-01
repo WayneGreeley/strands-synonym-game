@@ -1,0 +1,45 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: 'SynonymSeeker - Game Builder Lambda Function'
+
+Resources:
+  # Game Builder Agent Lambda Function
+  GameBuilderFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: 'synonymseeker-game-builder'
+      Description: 'Game Builder Agent for SynonymSeeker'
+      CodeUri: ../backend/src/
+      Handler: game_builder_agent.lambda_handler
+      Runtime: python3.12
+      Timeout: 30
+      MemorySize: 512
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+      FunctionUrlConfig:
+        AuthType: NONE
+        Cors:
+          AllowCredentials: false
+          AllowHeaders:
+            - Content-Type
+            - Authorization
+          AllowMethods:
+            - GET
+            - POST
+          AllowOrigins:
+            - '*'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    Description: Environment name
+
+Outputs:
+  GameBuilderFunctionUrl:
+    Description: 'Game Builder Function URL'
+    Value: !GetAtt GameBuilderFunctionUrl.FunctionUrl
+  GameBuilderFunctionArn:
+    Description: 'Game Builder Function ARN'
+    Value: !Ref GameBuilderFunction

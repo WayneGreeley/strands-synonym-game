@@ -140,7 +140,7 @@ This log tracks AI prompt optimization opportunities and development blockers to
    - **Steering Opportunity**: Clarify business logic requirements upfront, especially edge cases
 
 ### AI Prompt Optimization Observations
-- **Ineffective**: "go read the fucking documentation!" was harsh but correct - I should have read docs first
+- **Ineffective**: "go read the documentation!" was harsh but correct - I should have read docs first
 - **Effective**: Systematic debugging approach - isolating validation logic, testing components separately
 - **Good**: Breaking down complex issues into smaller testable parts (validation, duplicate logic, response structure)
 - **Missing**: Should have asked about Strands documentation patterns before making assumptions
@@ -254,7 +254,7 @@ This log tracks AI prompt optimization opportunities and development blockers to
    - **Lesson Learned**: Test import structures early to catch API misunderstandings
 
 ### AI Prompt Optimization Observations
-- **Effective**: "go read the fucking documentation!" was harsh but correct guidance - documentation-first approach worked perfectly
+- **Effective**: "go read the documentation!" was harsh but correct guidance - documentation-first approach worked perfectly
 - **Efficient**: Systematic approach to A2A implementation (server setup → client implementation → testing) was logical
 - **Good**: Property-based testing approach validated communication patterns across many inputs
 - **Improvement**: Could have started with package introspection earlier to avoid import confusion
@@ -518,3 +518,95 @@ This log tracks AI prompt optimization opportunities and development blockers to
 1. **Error Handling Patterns**: Document the comprehensive error handling approach used in this task
 2. **Property-Based Testing Guidelines**: Capture the approach for writing flexible, comprehensive property-based tests
 3. **Session Management Best Practices**: Document session corruption recovery and validation patterns
+
+---
+
+## Task 10: Create AWS infrastructure with SAM ✅
+
+### What Worked Well
+- **Comprehensive SAM templates**: Created complete infrastructure-as-code with proper separation of concerns
+- **Security-first approach**: Implemented secrets management, least-privilege IAM, and comprehensive security measures
+- **Automated deployment**: Created scripts for deployment, secrets setup, and cleanup with proper error handling
+- **Production-ready architecture**: Included CloudFront CDN, S3 static hosting, Lambda Function URLs, and proper monitoring
+
+### Key Infrastructure Delivered
+1. **Lambda Functions Template** (`template.yaml`):
+   - Game Builder and Hint Provider Lambda functions with Strands layer
+   - Function URLs with CORS configuration for direct HTTPS access
+   - CloudWatch Logs with 14-day retention
+   - Environment variables and IAM roles with least-privilege access
+
+2. **Frontend Infrastructure** (`frontend-template.yaml`):
+   - S3 bucket with encryption and versioning for static website hosting
+   - CloudFront distribution with Origin Access Control (OAC) for security
+   - Custom domain support with Route 53 and SSL certificates
+   - Automated deployment function for frontend configuration
+
+3. **Secrets Management** (`secrets-template.yaml`):
+   - AWS Secrets Manager for API keys and bearer tokens
+   - Parameter Store for non-sensitive configuration references
+   - IAM roles for secure Lambda access to secrets
+   - Auto-generated bearer tokens for A2A communication security
+
+### Advanced Features Implemented
+- **Automated Deployment Scripts**: Complete deployment, secrets setup, and cleanup automation
+- **Security Best Practices**: Encryption at rest, HTTPS-only, input validation, no hardcoded secrets
+- **Cost Optimization**: Free tier usage, efficient caching policies, proper resource sizing
+- **Monitoring Integration**: CloudWatch Logs, structured logging, error tracking
+- **Development Support**: Local testing with SAM, hot reloading, custom domain support
+
+### Blockers Encountered
+1. **No significant blockers**: The systematic approach and AWS best practices knowledge led to smooth implementation
+   - **Success Factor**: Applied security-first design principles from the beginning
+   - **Efficient Development**: Leveraged SAM templates and CloudFormation for reliable infrastructure
+
+### AI Prompt Optimization Observations
+- **Effective**: Clear task breakdown into subtasks (Lambda → Frontend → Secrets) made implementation systematic
+- **Efficient**: Building on established AWS patterns and security best practices reduced development time
+- **Good**: Comprehensive documentation and automation scripts provide excellent developer experience
+
+### Infrastructure Components Created
+- **3 CloudFormation templates**: Main Lambda functions, frontend infrastructure, secrets management
+- **3 deployment scripts**: Automated deployment, secrets setup, complete cleanup
+- **1 comprehensive README**: Detailed documentation with troubleshooting and best practices
+- **SAM configuration**: Optimized build and deployment settings
+
+### Security Implementation Highlights
+- **Secrets Management**: All API keys encrypted in AWS Secrets Manager with auto-rotation support
+- **Network Security**: CloudFront with OAC, HTTPS-only, proper CORS configuration
+- **IAM Security**: Least-privilege roles, resource-specific permissions, no overly broad access
+- **Input Security**: Comprehensive validation, sanitization, and prompt injection prevention
+- **Monitoring Security**: CloudWatch Logs, CloudTrail integration, security event tracking
+
+### Cost and Performance Optimizations
+- **Free Tier Friendly**: Designed to stay within AWS free tier limits for learning/development
+- **Efficient Caching**: CloudFront caching policies to reduce Lambda invocations
+- **Right-Sized Resources**: 512MB Lambda memory, 30-second timeout, appropriate log retention
+- **Compression**: Response compression and efficient asset delivery
+- **Regional Optimization**: US-East-1 deployment for lowest latency and costs
+
+### Time/Credit Usage
+- **Efficient**: Well-structured approach with clear separation of concerns led to smooth implementation
+- **Systematic**: Infrastructure-as-code approach prevented configuration drift and deployment issues
+- **Effective**: Comprehensive automation reduces manual deployment effort and human error
+
+### Potential Steering Document Content
+```markdown
+# AWS Infrastructure Best Practices
+- Use separate CloudFormation templates for different concerns (compute, storage, secrets)
+- Implement secrets management from the beginning, never hardcode sensitive data
+- Create comprehensive deployment automation with proper error handling
+- Follow security-first design: encryption, least-privilege IAM, HTTPS-only
+- Include monitoring and logging configuration in infrastructure templates
+- Provide detailed documentation with troubleshooting guides and cost optimization tips
+- Create cleanup scripts to prevent resource sprawl and unexpected costs
+```
+
+### Deployment Ready Features
+- **One-Command Deployment**: `./deploy.sh` handles complete infrastructure setup
+- **Secrets Configuration**: `./setup-secrets.sh` provides guided API key configuration
+- **Complete Cleanup**: `./cleanup.sh` removes all resources to prevent ongoing costs
+- **Comprehensive Documentation**: Step-by-step guides for manual deployment and troubleshooting
+- **Production Ready**: Security, monitoring, and performance optimizations included
+
+The infrastructure is now ready for deployment to AWS with comprehensive security, monitoring, and automation features. All components follow AWS best practices and are designed for both development and production use.

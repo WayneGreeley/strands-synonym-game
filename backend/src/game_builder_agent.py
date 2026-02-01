@@ -10,7 +10,7 @@ from typing import Dict, Any, Optional, List
 from strands import Agent, tool
 from a2a.client import A2ACardResolver, ClientConfig, ClientFactory
 from a2a.types import Message, Part, Role, TextPart
-from src.models import (
+from .models import (
     GameSession, SynonymSlot, GameStatus,
     StartGameResponse, GuessRequest, GuessResponse, GiveUpResponse
 )
@@ -943,8 +943,12 @@ def lambda_handler(event: dict, context: Any) -> dict:
         
         # Parse request with enhanced validation
         try:
-            http_method = event.get('httpMethod', 'POST')
-            path = event.get('path', '/')
+            # Extract request details from Function URL event format
+            request_context = event.get('requestContext', {})
+            http_context = request_context.get('http', {})
+            
+            http_method = http_context.get('method', 'POST')
+            path = http_context.get('path', '/')
             body = event.get('body', '{}')
             
             # Request size validation (Lambda has 6MB limit, we'll use 1MB for safety)
@@ -1030,7 +1034,7 @@ def lambda_handler(event: dict, context: Any) -> dict:
                     if not guess:
                         raise ValueError("Guess is required")
                     
-                    request = GuessRequest(sessionId=session_id, guess=guess)
+                    request = GuessRequest(session_id=session_id, guess=guess)
                     response = game_builder.submit_guess(request)
                     
                     return {

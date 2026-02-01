@@ -1,0 +1,101 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: 'SynonymSeeker - Multi-agent word puzzle game with AWS Strands'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+    Description: Environment name
+
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 512
+    Runtime: python3.12
+    Environment:
+      Variables:
+        ENVIRONMENT: !Ref Environment
+        LOG_LEVEL: INFO
+        AWS_REGION: !Ref AWS::Region
+    Layers:
+      - !Ref StrandsLayer
+
+Resources:
+  # Shared Lambda Layer for Strands dependencies
+  StrandsLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: !Sub '${AWS::StackName}-strands-layer'
+      Description: 'Strands agents and dependencies'
+      ContentUri: ../backend/
+      CompatibleRuntimes:
+        - python3.12
+      RetentionPolicy: Delete
+    Metadata:
+      BuildMethod: python3.12
+
+  # Game Builder Agent Lambda Function
+  GameBuilderFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-game-builder'
+      Description: 'Game Builder Agent for SynonymSeeker'
+      CodeUri: ../backend/src/
+      Handler: game_builder_agent.lambda_handler
+      FunctionUrlConfig:
+        AuthType: NONE
+        Cors:
+          AllowCredentials: false
+          AllowHeaders:
+            - Content-Type
+            - X-Amzn-Trace-Id
+          AllowMethods:
+            - GET
+            - POST
+            - OPTIONS
+          AllowOrigins:
+            - '*'
+          ExposeHeaders:
+            - Date
+          MaxAge: 86400
+
+  # Hint Provider Agent Lambda Function  
+  HintProviderFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-hint-provider'
+      Description: 'Hint Provider Agent for SynonymSeeker'
+      CodeUri: ../backend/src/
+      Handler: hint_provider_agent.lambda_handler
+      FunctionUrlConfig:
+        AuthType: NONE
+        Cors:
+          AllowCredentials: false
+          AllowHeaders:
+            - Content-Type
+            - X-Amzn-Trace-Id
+            - X-Amzn-Bedrock-AgentCore-Runtime-Session-Id
+          AllowMethods:
+            - GET
+            - POST
+            - OPTIONS
+          AllowOrigins:
+            - '*'
+          ExposeHeaders:
+            - Date
+          MaxAge: 86400
+
+Outputs:
+  GameBuilderFunctionUrl:
+    Description: 'Game Builder Function URL'
+    Value: !GetAtt GameBuilderFunctionUrl.FunctionUrl
+    Export:
+      Name: !Sub '${AWS::StackName}-GameBuilderUrl'
+
+  HintProviderFunctionUrl:
+    Description: 'Hint Provider Function URL'
+    Value: !GetAtt HintProviderFunctionUrl.FunctionUrl
+    Export:
+      Name: !Sub '${AWS::StackName}-HintProviderUrl'
